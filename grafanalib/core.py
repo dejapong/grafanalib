@@ -1144,6 +1144,7 @@ class Panel(object):
     timeFrom = attr.ib(default=None)
     timeShift = attr.ib(default=None)
     transparent = attr.ib(default=False, validator=instance_of(bool))
+    transformations = attr.ib(default=attr.Factory(list), validator=instance_of(list))
 
     def _map_panels(self, f):
         return f(self)
@@ -1172,6 +1173,7 @@ class Panel(object):
             'timeShift': self.timeShift,
             'title': self.title,
             'transparent': self.transparent,
+            'transformations': self.transformations,
         }
         res.update(overrides)
         return res
