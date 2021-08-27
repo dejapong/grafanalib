@@ -1122,6 +1122,13 @@ class Panel(object):
     :param timeFrom: time range that Override relative time
     :param title: of the panel
     :param transparent: defines if panel should be transparent
+    :param decimals: number of decimals to display
+    :param mappings: the list of values to text mappings
+        This should be a list of StatMapping objects
+        https://grafana.com/docs/grafana/latest/panels/field-configuration-options/#value-mapping
+    :param thresholds: single stat thresholds
+    :param fieldOverrides: field overrides for fieldConfig
+    :param format: defines value units
     """
 
     dataSource = attr.ib(default=None)
@@ -1145,6 +1152,11 @@ class Panel(object):
     timeShift = attr.ib(default=None)
     transparent = attr.ib(default=False, validator=instance_of(bool))
     transformations = attr.ib(default=attr.Factory(list), validator=instance_of(list))
+    fieldOverrides = attr.ib(default=attr.Factory(list), validator=instance_of(list))
+    mappings = attr.ib(default=attr.Factory(list))
+    thresholds = attr.ib(default="")
+    decimals = attr.ib(default=None)
+    format = attr.ib(default='none')
 
     def _map_panels(self, f):
         return f(self)
@@ -1174,6 +1186,19 @@ class Panel(object):
             'title': self.title,
             'transparent': self.transparent,
             'transformations': self.transformations,
+            'fieldConfig': {
+                'defaults': {
+                    'custom': {},
+                    'decimals': self.decimals,
+                    'mappings': self.mappings,
+                    'thresholds': {
+                        'mode': 'absolute',
+                        'steps': self.thresholds,
+                    },
+                    'unit': self.format
+                },
+                'overrides': self.fieldOverrides
+            },
         }
         res.update(overrides)
         return res
@@ -1399,20 +1424,15 @@ class TimeSeries(Panel):
     :param alignment: defines value & title positioning: keys 'auto' 'centre'
     :param description: optional panel description
     :param editable: defines if panel is editable via web interfaces
-    :param format: defines value units
     :param height: defines panel height
     :param id: panel id
-    :param decimals: number of decimals to display
     :param interval: defines time interval between metric queries
     :param links: additional web links
-    :param mappings: the list of values to text mappings
-        This should be a list of StatMapping objects
-        https://grafana.com/docs/grafana/latest/panels/field-configuration-options/#value-mapping
     :param reduceCalc: algorithm for reduction to a single value: keys
         'mean' 'lastNotNull' 'last' 'first' 'firstNotNull' 'min' 'max' 'sum' 'total'
     :param span: defines the number of spans that will be used for panel
-    :param thresholds: single stat thresholds
     :param transparent: defines if the panel should be transparent
+    :param calcs Calculations displayed in legends
     """
 
     displayMode = attr.ib(default='list')
@@ -1422,32 +1442,23 @@ class TimeSeries(Panel):
     graphMode = attr.ib(default='area')
     orientation = attr.ib(default='auto')
     alignment = attr.ib(default='auto')
-    format = attr.ib(default='none')
-    mappings = attr.ib(default=attr.Factory(list))
     span = attr.ib(default=6)
-    thresholds = attr.ib(default="")
     reduceCalc = attr.ib(default='mean', type=str)
-    decimals = attr.ib(default=None)
+    calcs = attr.ib(default=[], validator=instance_of(list))
+    tooltipMode = attr.ib(default='multi')
+    lineWidth = attr.ib(default=1)
 
     def to_json_data(self):
-        return self.panel_json(
+        res = self.panel_json(
             {
-                'fieldConfig': {
-                    'defaults': {
-                        'custom': {},
-                        'decimals': self.decimals,
-                        'mappings': self.mappings,
-                        'thresholds': {
-                            'mode': 'absolute',
-                            'steps': self.thresholds,
-                        },
-                        'unit': self.format
-                    }
-                },
                 'options': {
+                    'tooltip': {
+                        'mode': self.tooltipMode
+                    },
                     'legend': {
-                        "displayMode": self.displayMode,
-                        "placement": self.placement
+                        'displayMode': self.displayMode,
+                        'placement': self.placement,
+                        'calcs': self.calcs,
                     },
                     'textMode': self.textMode,
                     'colorMode': self.colorMode,
@@ -1465,6 +1476,38 @@ class TimeSeries(Panel):
                 'type': TIMESERIES_TYPE,
             }
         )
+
+        # Add fields to parent panel object
+        res["fieldConfig"]["defaults"]["custom"] = {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "barAlignment": 0,
+            "lineWidth": self.lineWidth,
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "spanNulls": False,
+            "showPoints": "auto",
+            "pointSize": 5,
+            "stacking": {
+                "mode": "none",
+                "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+                "type": "linear"
+            },
+            "hideFrom": {
+                "tooltip": False,
+                "viz": False,
+                "legend": False
+            },
+            "thresholdsStyle": {
+                "mode": "off"
+            }
+        }
+
+        return res
 
 
 @attr.s
@@ -1692,7 +1735,7 @@ class Stat(Panel):
                         'calcs': [
                             self.reduceCalc
                         ],
-                        'fields': '',
+                        'fields': '/.*/',
                         'values': False
                     }
                 },
@@ -1716,6 +1759,7 @@ class StatMapping(object):
     mapValue = attr.ib(default="", validator=instance_of(str))
     startValue = attr.ib(default="", validator=instance_of(str))
     endValue = attr.ib(default="", validator=instance_of(str))
+    color = attr.ib(default="", validator=instance_of(str))
     id = attr.ib(default=None)
 
     def to_json_data(self):
@@ -1724,6 +1768,7 @@ class StatMapping(object):
         return {
             'operator': '',
             'text': self.text,
+            'color': self.color,
             'type': mappingType,
             'value': self.mapValue,
             'from': self.startValue,
